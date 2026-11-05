@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Translation
+import Vision
 
 struct LanguageChoice: Identifiable, Hashable {
     let id: String
@@ -71,8 +72,31 @@ final class LiveTranslationModel: ObservableObject {
         else { return }
 
         lastObservationData = observationData
+        accept(image: image, observations: observations, live: true)
+    }
+
+    func scanImportedImage(_ image: UIImage) async {
+        guard let cgImage = image.cgImage else { return }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+
+        do {
+            try VNImageRequestHandler(cgImage: cgImage, orientation: .up).perform([request])
+            let observations = (request.results ?? []).compactMap { result -> ScreenObservation? in
+                guard let candidate = result.topCandidates(1).first else { return nil }
+                let box = result.boundingBox
+                return ScreenObservation(text: candidate.string, x: box.minX, y: box.minY, width: box.width, height: box.height)
+            }
+            accept(image: image, observations: observations, live: false)
+        } catch {
+            translations = []
+        }
+    }
+
+    private func accept(image: UIImage, observations: [ScreenObservation], live: Bool) {
         frameImage = image
-        isReceiving = true
+        isReceiving = live
         pending = observations
         translationConfiguration?.invalidate()
         translationConfiguration = .init(
@@ -110,4 +134,3 @@ final class LiveTranslationModel: ObservableObject {
         lastObservationData = nil
     }
 }
-
