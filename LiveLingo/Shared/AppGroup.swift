@@ -81,3 +81,4 @@ struct ScreenObservation: Codable, Identifiable, Hashable {
         self.height = height
     }
 }
+

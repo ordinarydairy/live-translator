@@ -44,9 +44,9 @@ Translation overlays use the same rectangle as the detected source text and
 shrink the font until the complete translation fits. This prevents adjacent
 rows in lists from overlapping and avoids ellipsis truncation.
 
-At runtime, the app and extension read their signed App Group entitlement with
-Security.framework. This accommodates sideloading tools that rewrite App Group
-identifiers while re-signing the IPA.
+At runtime, the app and extension read the App Group identifier from their
+embedded signed provisioning profiles. This accommodates sideloading tools
+that rewrite App Group identifiers while re-signing the IPA.
 
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
