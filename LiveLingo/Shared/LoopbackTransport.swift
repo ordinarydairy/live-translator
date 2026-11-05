@@ -24,9 +24,12 @@ enum LoopbackTransport {
         let queue = DispatchQueue(label: "LiveLingo.Loopback.Send")
         connection.stateUpdateHandler = { state in
             guard case .ready = state else { return }
-            connection.send(content: data, contentContext: .finalMessage, isComplete: true) { _ in
-                connection.cancel()
-            }
+            connection.send(
+                content: data,
+                contentContext: .finalMessage,
+                isComplete: true,
+                completion: .contentProcessed { _ in connection.cancel() }
+            )
         }
         connection.start(queue: queue)
     }
