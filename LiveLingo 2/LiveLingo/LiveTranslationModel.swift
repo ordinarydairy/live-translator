@@ -1,5 +1,4 @@
 import Foundation
-import ImageIO
 import SwiftUI
 import Translation
 import Vision
@@ -78,19 +77,20 @@ final class LiveTranslationModel: ObservableObject {
     }
 
     func scanImportedImage(_ image: UIImage) async {
-        guard let cgImage = image.cgImage else { return }
+        let normalizedImage = normalized(image)
+        guard let cgImage = normalizedImage.cgImage else { return }
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
 
         do {
-            try VNImageRequestHandler(cgImage: cgImage, orientation: visionOrientation(for: image.imageOrientation)).perform([request])
+            try VNImageRequestHandler(cgImage: cgImage, orientation: .up).perform([request])
             let observations = (request.results ?? []).compactMap { result -> ScreenObservation? in
                 guard let candidate = result.topCandidates(1).first else { return nil }
                 let box = result.boundingBox
                 return ScreenObservation(text: candidate.string, x: box.minX, y: box.minY, width: box.width, height: box.height)
             }
-            accept(image: image, observations: observations, live: false)
+            accept(image: normalizedImage, observations: observations, live: false)
         } catch {
             translations = []
         }
@@ -107,14 +107,21 @@ final class LiveTranslationModel: ObservableObject {
 
     private func requestTranslation() {
         translationConfiguration?.invalidate()
+        translationConfiguration = nil
         guard !pending.isEmpty else {
-            translationConfiguration = nil
             return
         }
-        translationConfiguration = .init(
-            source: sourceLanguage.code.isEmpty ? nil : Locale.Language(identifier: sourceLanguage.code),
-            target: Locale.Language(identifier: targetLanguage.code)
-        )
+        let generation = translationGeneration
+        let sourceCode = sourceLanguage.code
+        let targetCode = targetLanguage.code
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, generation == self.translationGeneration else { return }
+            self.translationConfiguration = .init(
+                source: sourceCode.isEmpty ? nil : Locale.Language(identifier: sourceCode),
+                target: Locale.Language(identifier: targetCode)
+            )
+        }
     }
 
     func translatePending(using session: TranslationSession) async {
@@ -149,17 +156,14 @@ final class LiveTranslationModel: ObservableObject {
         requestTranslation()
     }
 
-    private func visionOrientation(for orientation: UIImage.Orientation) -> CGImagePropertyOrientation {
-        switch orientation {
-        case .up: return .up
-        case .down: return .down
-        case .left: return .left
-        case .right: return .right
-        case .upMirrored: return .upMirrored
-        case .downMirrored: return .downMirrored
-        case .leftMirrored: return .leftMirrored
-        case .rightMirrored: return .rightMirrored
-        @unknown default: return .up
+    private func normalized(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
         }
     }
 }
+
