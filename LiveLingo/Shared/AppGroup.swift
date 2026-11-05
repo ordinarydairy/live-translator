@@ -1,19 +1,33 @@
 import Foundation
-import Security
 
 enum AppGroup {
     private static let fallbackIdentifier = "group.com.example.LiveLingo"
     static var identifier: String {
-        guard let task = SecTaskCreateFromSelf(kCFAllocatorDefault),
-              let value = SecTaskCopyValueForEntitlement(
-                task,
-                "com.apple.security.application-groups" as CFString,
-                nil
-              ),
-              let groups = value as? [String],
-              let first = groups.first
-        else { return fallbackIdentifier }
-        return first
+        signedApplicationGroups().first ?? fallbackIdentifier
+    }
+
+    private static func signedApplicationGroups() -> [String] {
+        guard let profileURL = Bundle.main.url(
+            forResource: "embedded",
+            withExtension: "mobileprovision"
+        ),
+        let profileData = try? Data(contentsOf: profileURL),
+        let startRange = profileData.range(of: Data("<plist".utf8)),
+        let endRange = profileData.range(of: Data("</plist>".utf8)),
+        startRange.lowerBound < endRange.upperBound
+        else { return [] }
+
+        let plistData = profileData.subdata(in: startRange.lowerBound..<endRange.upperBound)
+        guard let profile = try? PropertyListSerialization.propertyList(
+            from: plistData,
+            options: [],
+            format: nil
+        ) as? [String: Any],
+        let entitlements = profile["Entitlements"] as? [String: Any],
+        let groups = entitlements["com.apple.security.application-groups"] as? [String]
+        else { return [] }
+
+        return groups
     }
     static let frameName = "latest-frame.jpg"
     static let observationName = "latest-observations.json"
@@ -67,4 +81,3 @@ struct ScreenObservation: Codable, Identifiable, Hashable {
         self.height = height
     }
 }
-
