@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftUI
 import Translation
 import Vision
@@ -43,6 +44,7 @@ final class LiveTranslationModel: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var pending: [ScreenObservation] = []
     private var lastObservationData: Data?
+    private var translationGeneration = 0
 
     var statusText: String { isReceiving ? "Receiving live screen" : "Ready to translate" }
 
@@ -82,7 +84,7 @@ final class LiveTranslationModel: ObservableObject {
         request.usesLanguageCorrection = true
 
         do {
-            try VNImageRequestHandler(cgImage: cgImage, orientation: .up).perform([request])
+            try VNImageRequestHandler(cgImage: cgImage, orientation: visionOrientation(for: image.imageOrientation)).perform([request])
             let observations = (request.results ?? []).compactMap { result -> ScreenObservation? in
                 guard let candidate = result.topCandidates(1).first else { return nil }
                 let box = result.boundingBox
@@ -98,7 +100,17 @@ final class LiveTranslationModel: ObservableObject {
         frameImage = image
         isReceiving = live
         pending = observations
+        translations = []
+        translationGeneration += 1
+        requestTranslation()
+    }
+
+    private func requestTranslation() {
         translationConfiguration?.invalidate()
+        guard !pending.isEmpty else {
+            translationConfiguration = nil
+            return
+        }
         translationConfiguration = .init(
             source: sourceLanguage.code.isEmpty ? nil : Locale.Language(identifier: sourceLanguage.code),
             target: Locale.Language(identifier: targetLanguage.code)
@@ -108,6 +120,7 @@ final class LiveTranslationModel: ObservableObject {
     func translatePending(using session: TranslationSession) async {
         guard !pending.isEmpty else { return }
         let current = pending
+        let generation = translationGeneration
         do {
             let requests = current.map { TranslationSession.Request(sourceText: $0.text, clientIdentifier: $0.id.uuidString) }
             let responses = try await session.translations(from: requests)
@@ -115,6 +128,7 @@ final class LiveTranslationModel: ObservableObject {
                 guard let id = response.clientIdentifier else { return nil }
                 return (id, response.targetText)
             })
+            guard generation == translationGeneration else { return }
             translations = current.map {
                 TranslatedObservation(
                     id: $0.id,
@@ -124,13 +138,28 @@ final class LiveTranslationModel: ObservableObject {
                 )
             }
         } catch {
+            guard generation == translationGeneration else { return }
             translations = current.map { .init(id: $0.id, observation: $0, translatedText: $0.text, showOriginal: showOriginalText) }
         }
     }
 
     private func resetTranslation() {
-        translationConfiguration?.invalidate()
-        translationConfiguration = nil
-        lastObservationData = nil
+        translations = []
+        translationGeneration += 1
+        requestTranslation()
+    }
+
+    private func visionOrientation(for orientation: UIImage.Orientation) -> CGImagePropertyOrientation {
+        switch orientation {
+        case .up: return .up
+        case .down: return .down
+        case .left: return .left
+        case .right: return .right
+        case .upMirrored: return .upMirrored
+        case .downMirrored: return .downMirrored
+        case .leftMirrored: return .leftMirrored
+        case .rightMirrored: return .rightMirrored
+        @unknown default: return .up
+        }
     }
 }
