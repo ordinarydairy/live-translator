@@ -54,6 +54,7 @@ final class LiveTranslationModel: ObservableObject {
     private var pending: [ScreenObservation] = []
     private var lastObservationData: Data?
     private var translationGeneration = 0
+    private var optimisticBroadcastUntil = Date.distantPast
 
     var statusText: String { isReceiving ? "Receiving live screen" : "Ready to translate" }
 
@@ -78,7 +79,21 @@ final class LiveTranslationModel: ObservableObject {
         let active = AppGroup.preferences?.bool(forKey: AppGroup.broadcastActiveKey) ?? false
         let heartbeat = AppGroup.preferences?.double(forKey: AppGroup.broadcastHeartbeatKey) ?? 0
         let recentlyActive = Date().timeIntervalSince1970 - heartbeat < 4
-        isBroadcasting = active && recentlyActive
+        isBroadcasting = (active && recentlyActive) || Date() < optimisticBroadcastUntil
+    }
+
+    func beginBroadcastSession() {
+        optimisticBroadcastUntil = Date().addingTimeInterval(15)
+        isBroadcasting = true
+        AppGroup.preferences?.set(false, forKey: AppGroup.stopBroadcastKey)
+        AppGroup.preferences?.synchronize()
+    }
+
+    func requestBroadcastStop() {
+        optimisticBroadcastUntil = .distantPast
+        isBroadcasting = false
+        AppGroup.preferences?.set(true, forKey: AppGroup.stopBroadcastKey)
+        AppGroup.preferences?.synchronize()
     }
 
     private func loadLatestFrame() async {

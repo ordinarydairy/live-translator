@@ -1,12 +1,26 @@
 import Foundation
+import Security
 
 enum AppGroup {
-    static let identifier = "group.com.example.LiveLingo"
+    private static let fallbackIdentifier = "group.com.example.LiveLingo"
+    static var identifier: String {
+        guard let task = SecTaskCreateFromSelf(kCFAllocatorDefault),
+              let value = SecTaskCopyValueForEntitlement(
+                task,
+                "com.apple.security.application-groups" as CFString,
+                nil
+              ),
+              let groups = value as? [String],
+              let first = groups.first
+        else { return fallbackIdentifier }
+        return first
+    }
     static let frameName = "latest-frame.jpg"
     static let observationName = "latest-observations.json"
     static let sourceLanguageKey = "ocr-source-language"
     static let broadcastActiveKey = "broadcast-active"
     static let broadcastHeartbeatKey = "broadcast-heartbeat"
+    static let stopBroadcastKey = "stop-broadcast-requested"
 
     static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)

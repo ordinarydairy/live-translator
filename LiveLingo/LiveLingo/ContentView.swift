@@ -78,7 +78,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("1.6")
+            Text("1.7")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -174,6 +174,7 @@ struct ContentView: View {
                     }
                     .allowsHitTesting(false)
                     BroadcastPicker {
+                        model.beginBroadcastSession()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                             showLiveSession = true
                         }
@@ -331,6 +332,9 @@ private struct LiveTranslatorSettingsView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
+            .onDisappear {
+                model.requestBroadcastStop()
+            }
         }
     }
 }
@@ -380,6 +384,7 @@ private final class AutoFittingLabel: UILabel {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        clipsToBounds = true
         guard bounds.width > 0, bounds.height > 0, let text, !text.isEmpty else { return }
 
         var size = baseFontSize

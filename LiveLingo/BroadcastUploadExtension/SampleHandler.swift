@@ -10,6 +10,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private var isProcessing = false
 
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
+        AppGroup.preferences?.set(false, forKey: AppGroup.stopBroadcastKey)
         setBroadcastActive(true)
     }
 
@@ -24,6 +25,18 @@ final class SampleHandler: RPBroadcastSampleHandler {
     }
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
+        AppGroup.preferences?.synchronize()
+        if AppGroup.preferences?.bool(forKey: AppGroup.stopBroadcastKey) == true {
+            AppGroup.preferences?.set(false, forKey: AppGroup.stopBroadcastKey)
+            setBroadcastActive(false)
+            finishBroadcastWithError(NSError(
+                domain: "LiveLingo.Broadcast",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Broadcast stopped from LiveLingo"]
+            ))
+            return
+        }
+
         guard sampleBufferType == .video,
               Date().timeIntervalSince(lastProcessed) >= 1.0,
               !isProcessing,
