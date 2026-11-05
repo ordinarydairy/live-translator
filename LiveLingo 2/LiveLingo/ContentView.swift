@@ -45,11 +45,11 @@ struct ContentView: View {
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             Task {
+                defer { selectedPhoto = nil }
                 if let data = try? await item.loadTransferable(type: Data.self),
                    let image = UIImage(data: data) {
                     await model.scanImportedImage(image)
                 }
-                selectedPhoto = nil
             }
         }
     }
@@ -67,6 +67,11 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
+            Text("1.1")
+                .font(.system(size: 10, weight: .bold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(.white.opacity(0.72), in: Capsule())
             Button { showBroadcastHelp = true } label: {
                 Image(systemName: "questionmark")
                     .font(.headline)
@@ -149,14 +154,17 @@ struct ContentView: View {
 
     private var actionGrid: some View {
         HStack(spacing: 12) {
-            VStack(spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 24).fill(Color(red: 0.55, green: 0.84, blue: 0.31))
+                VStack(spacing: 7) {
+                    Image(systemName: "dot.radiowaves.left.and.right").font(.title2.bold())
+                    Text("Start broadcast").font(.subheadline.bold())
+                }
+                .allowsHitTesting(false)
                 BroadcastPicker()
-                    .frame(width: 58, height: 58)
-                Text("Start broadcast").font(.subheadline.bold())
-                Text("Tap the broadcast icon").font(.system(size: 9, weight: .medium)).foregroundStyle(.black.opacity(0.52))
             }
             .frame(maxWidth: .infinity, minHeight: 104)
-            .background(Color(red: 0.55, green: 0.84, blue: 0.31), in: RoundedRectangle(cornerRadius: 24))
+            .clipShape(RoundedRectangle(cornerRadius: 24))
 
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                 VStack(spacing: 8) {
@@ -238,11 +246,37 @@ private struct TranslationOverlay: View {
 }
 
 private struct BroadcastPicker: UIViewRepresentable {
-    func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
-        let picker = RPSystemBroadcastPickerView(frame: .zero)
-        picker.showsMicrophoneButton = false
-        picker.tintColor = .black
-        return picker
+    func makeUIView(context: Context) -> BroadcastPickerContainer {
+        BroadcastPickerContainer()
     }
-    func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {}
+    func updateUIView(_ uiView: BroadcastPickerContainer, context: Context) {}
+}
+
+private final class BroadcastPickerContainer: UIView {
+    private let picker = RPSystemBroadcastPickerView(frame: .zero)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        picker.showsMicrophoneButton = false
+        picker.tintColor = .clear
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(picker)
+        NSLayoutConstraint.activate([
+            picker.leadingAnchor.constraint(equalTo: leadingAnchor),
+            picker.trailingAnchor.constraint(equalTo: trailingAnchor),
+            picker.topAnchor.constraint(equalTo: topAnchor),
+            picker.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // ReplayKit's private UIButton otherwise keeps a small intrinsic hit area.
+        picker.subviews.compactMap { $0 as? UIButton }.forEach { button in
+            button.frame = picker.bounds
+            button.imageView?.isHidden = true
+        }
+    }
 }
