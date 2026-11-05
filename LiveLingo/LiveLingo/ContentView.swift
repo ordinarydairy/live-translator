@@ -8,6 +8,7 @@ struct ContentView: View {
     @StateObject private var pictureInPicture = PictureInPictureManager()
     @State private var showLanguagePicker = false
     @State private var showBroadcastHelp = false
+    @State private var showLiveSession = false
     @State private var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
@@ -36,6 +37,9 @@ struct ContentView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .fullScreenCover(isPresented: $showLiveSession) {
+            LiveTranslatorSettingsView(model: model, pictureInPicture: pictureInPicture)
+        }
         .alert("LiveContainer limitation", isPresented: $showBroadcastHelp) {
             Button("Got it", role: .cancel) {}
         } message: {
@@ -48,6 +52,9 @@ struct ContentView: View {
         .onDisappear { model.stopPolling() }
         .onReceive(model.$pictureInPictureFrame) { frame in
             pictureInPicture.enqueue(frame)
+        }
+        .onChange(of: model.isBroadcasting) { _, active in
+            if active { showLiveSession = true }
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
@@ -74,7 +81,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("1.3")
+            Text("1.5")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -196,8 +203,6 @@ struct ContentView: View {
                 .background(.black, in: RoundedRectangle(cornerRadius: 20))
                 .foregroundStyle(.white)
             }
-            .disabled(model.pictureInPictureFrame == nil)
-            .opacity(model.pictureInPictureFrame == nil ? 0.45 : 1)
         }
     }
 
@@ -250,6 +255,109 @@ struct ContentView: View {
     }
 }
 
+private struct LiveTranslatorSettingsView: View {
+    @ObservedObject var model: LiveTranslationModel
+    @ObservedObject var pictureInPicture: PictureInPictureManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var showLanguages = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(red: 0.93, green: 1.0, blue: 0.77).ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        HStack {
+                            Circle()
+                                .fill(model.isBroadcasting ? Color.green : Color.orange)
+                                .frame(width: 11, height: 11)
+                            Text(model.isBroadcasting ? "Broadcast connected" : "Waiting for broadcast")
+                                .font(.subheadline.bold())
+                            Spacer()
+                        }
+                        .padding(16)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 22))
+
+                        Button { showLanguages = true } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("TRANSLATE FROM").font(.caption2.bold()).foregroundStyle(.secondary)
+                                    Text(model.sourceLanguage.name).font(.headline)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("TRANSLATE TO").font(.caption2.bold()).foregroundStyle(.secondary)
+                                    Text(model.targetLanguage.name).font(.headline)
+                                }
+                            }
+                            .padding(18)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 24))
+                            .foregroundStyle(.black)
+                        }
+                        .buttonStyle(.plain)
+
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 26).fill(.black)
+                            if let frame = model.pictureInPictureFrame {
+                                Image(uiImage: frame)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .clipShape(RoundedRectangle(cornerRadius: 26))
+                            } else {
+                                VStack(spacing: 12) {
+                                    ProgressView().tint(.white)
+                                    Text("Waiting for the first translated frame")
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .frame(height: 390)
+
+                        Toggle("Show original text", isOn: $model.showOriginalText)
+                            .font(.subheadline.bold())
+                            .tint(Color(red: 0.46, green: 0.77, blue: 0.16))
+                            .padding(17)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 22))
+
+                        Button { pictureInPicture.toggle() } label: {
+                            Label(
+                                pictureInPicture.isActive ? "Stop Picture in Picture" : "Open Picture in Picture",
+                                systemImage: pictureInPicture.isActive ? "pip.exit" : "pip.enter"
+                            )
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 17)
+                            .background(.black, in: RoundedRectangle(cornerRadius: 22))
+                            .foregroundStyle(.white)
+                        }
+
+                        Text("Keep Picture in Picture open before switching to the app you want translated.")
+                            .font(.caption)
+                            .foregroundStyle(.black.opacity(0.58))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationTitle("Live translator")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showLanguages) {
+                LanguagePicker(model: model)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+    }
+}
+
 private struct TranslationOverlay: View {
     let item: TranslatedObservation
     let imageFrame: CGRect
@@ -259,12 +367,28 @@ private struct TranslationOverlay: View {
                           y: imageFrame.minY + (1 - item.observation.y - item.observation.height) * imageFrame.height,
                           width: item.observation.width * imageFrame.width,
                           height: max(item.observation.height * imageFrame.height, 22))
-        Text(item.displayText)
-            .font(.system(size: max(11, min(18, rect.height * 0.58)), weight: .semibold))
-            .lineLimit(3).minimumScaleFactor(0.65).padding(.horizontal, 6)
-            .frame(width: max(rect.width, 60), height: max(rect.height, 28))
-            .background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 7))
-            .foregroundStyle(.white).position(x: rect.midX, y: rect.midY)
+        let bubbleWidth = min(max(rect.width * 1.45, 130), max(imageFrame.width - 16, 130))
+        let centerX = min(
+            max(rect.midX, imageFrame.minX + bubbleWidth / 2 + 8),
+            imageFrame.maxX - bubbleWidth / 2 - 8
+        )
+        let spaceAbove = max(rect.minY - imageFrame.minY - 5, 1)
+
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            Text(item.displayText)
+                .font(.system(size: max(12, min(20, rect.height * 0.68)), weight: .semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(width: bubbleWidth)
+                .background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(.white)
+        }
+        .frame(width: bubbleWidth, height: spaceAbove, alignment: .bottom)
+        .position(x: centerX, y: imageFrame.minY + spaceAbove / 2)
     }
 }
 

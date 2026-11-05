@@ -9,6 +9,20 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private var lastProcessed = Date.distantPast
     private var isProcessing = false
 
+    override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
+        setBroadcastActive(true)
+    }
+
+    override func broadcastFinished() {
+        setBroadcastActive(false)
+    }
+
+    private func setBroadcastActive(_ active: Bool) {
+        AppGroup.preferences?.set(active, forKey: AppGroup.broadcastActiveKey)
+        AppGroup.preferences?.set(Date().timeIntervalSince1970, forKey: AppGroup.broadcastHeartbeatKey)
+        AppGroup.preferences?.synchronize()
+    }
+
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
         guard sampleBufferType == .video,
               Date().timeIntervalSince(lastProcessed) >= 1.0,
@@ -18,6 +32,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
 
         lastProcessed = Date()
         isProcessing = true
+        setBroadcastActive(true)
 
         queue.async { [weak self] in
             defer {

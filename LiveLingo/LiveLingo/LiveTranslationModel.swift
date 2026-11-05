@@ -34,6 +34,7 @@ final class LiveTranslationModel: ObservableObject {
     @Published var pictureInPictureFrame: UIImage?
     @Published var translations: [TranslatedObservation] = []
     @Published var isReceiving = false
+    @Published var isBroadcasting = false
     @Published var sourceLanguage = LanguageChoice.choices[0] {
         didSet {
             AppGroup.preferences?.set(sourceLanguage.code, forKey: AppGroup.sourceLanguageKey)
@@ -60,6 +61,7 @@ final class LiveTranslationModel: ObservableObject {
         guard pollingTask == nil else { return }
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
+                self?.refreshBroadcastStatus()
                 await self?.loadLatestFrame()
                 try? await Task.sleep(for: .milliseconds(500))
             }
@@ -69,6 +71,14 @@ final class LiveTranslationModel: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+    }
+
+    private func refreshBroadcastStatus() {
+        AppGroup.preferences?.synchronize()
+        let active = AppGroup.preferences?.bool(forKey: AppGroup.broadcastActiveKey) ?? false
+        let heartbeat = AppGroup.preferences?.double(forKey: AppGroup.broadcastHeartbeatKey) ?? 0
+        let recentlyActive = Date().timeIntervalSince1970 - heartbeat < 4
+        isBroadcasting = active && recentlyActive
     }
 
     private func loadLatestFrame() async {
@@ -191,24 +201,45 @@ final class LiveTranslationModel: ObservableObject {
 
             for item in translations {
                 let box = item.observation
-                let rect = CGRect(
+                let originalRect = CGRect(
                     x: box.x * image.size.width,
                     y: (1 - box.y - box.height) * image.size.height,
-                    width: max(box.width * image.size.width, 80),
+                    width: box.width * image.size.width,
                     height: max(box.height * image.size.height, 34)
                 )
-                UIColor.black.withAlphaComponent(0.82).setFill()
-                UIBezierPath(roundedRect: rect, cornerRadius: 7).fill()
-
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.alignment = .center
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: max(13, min(26, rect.height * 0.55)), weight: .semibold),
+                    .font: UIFont.systemFont(ofSize: max(14, min(28, originalRect.height * 0.62)), weight: .semibold),
                     .foregroundColor: UIColor.white,
                     .paragraphStyle: paragraph
                 ]
+                let maxWidth = min(max(originalRect.width * 1.45, 180), image.size.width - 24)
+                let measured = NSString(string: item.displayText).boundingRect(
+                    with: CGSize(width: maxWidth - 16, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: attributes,
+                    context: nil
+                )
+                let bubbleSize = CGSize(
+                    width: maxWidth,
+                    height: ceil(measured.height) + 14
+                )
+                let centeredX = min(
+                    max(originalRect.midX, bubbleSize.width / 2 + 8),
+                    image.size.width - bubbleSize.width / 2 - 8
+                )
+                let bubbleRect = CGRect(
+                    x: centeredX - bubbleSize.width / 2,
+                    y: max(4, originalRect.minY - bubbleSize.height - 6),
+                    width: bubbleSize.width,
+                    height: bubbleSize.height
+                )
+
+                UIColor.black.withAlphaComponent(0.86).setFill()
+                UIBezierPath(roundedRect: bubbleRect, cornerRadius: 8).fill()
                 item.displayText.draw(
-                    in: rect.insetBy(dx: 5, dy: 4),
+                    in: bubbleRect.insetBy(dx: 8, dy: 7),
                     withAttributes: attributes
                 )
             }

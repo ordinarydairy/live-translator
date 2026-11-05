@@ -35,6 +35,11 @@ start PiP before switching apps. This is a video-style PiP window, not a
 system-wide transparent overlay, and sideloaded/background behavior can vary
 across iOS versions.
 
+When ReplayKit starts, the extension publishes a heartbeat through the App
+Group and LiveLingo automatically opens the **Live translator** session page.
+That page contains the active languages, connection status, translated preview,
+original-text toggle, and an always-available PiP control with a waiting frame.
+
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
 ## Build an IPA without a Mac

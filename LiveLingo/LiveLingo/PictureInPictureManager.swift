@@ -31,6 +31,7 @@ final class PictureInPictureManager: NSObject, ObservableObject {
         controller.requiresLinearPlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         self.controller = controller
+        enqueue(makeWaitingFrame())
         refreshAvailability()
     }
 
@@ -130,6 +131,25 @@ final class PictureInPictureManager: NSObject, ObservableObject {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .moviePlayback)
         try? session.setActive(true)
+    }
+
+    private func makeWaitingFrame() -> UIImage {
+        let size = CGSize(width: 720, height: 1280)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 38, weight: .semibold),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: "Waiting for live translation…").draw(
+                in: CGRect(x: 60, y: 570, width: 600, height: 140),
+                withAttributes: attributes
+            )
+        }
     }
 
     private func refreshAvailability() {

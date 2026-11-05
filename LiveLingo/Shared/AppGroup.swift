@@ -5,6 +5,8 @@ enum AppGroup {
     static let frameName = "latest-frame.jpg"
     static let observationName = "latest-observations.json"
     static let sourceLanguageKey = "ocr-source-language"
+    static let broadcastActiveKey = "broadcast-active"
+    static let broadcastHeartbeatKey = "broadcast-heartbeat"
 
     static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)
