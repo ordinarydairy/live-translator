@@ -121,7 +121,7 @@ final class PictureInPictureManager: NSObject, ObservableObject {
             sampleBuffer,
             key: kCMSampleAttachmentKey_DisplayImmediately,
             value: kCFBooleanTrue,
-            attachmentMode: .shouldPropagate
+            attachmentMode: kCMAttachmentMode_ShouldPropagate
         )
         return sampleBuffer
     }
