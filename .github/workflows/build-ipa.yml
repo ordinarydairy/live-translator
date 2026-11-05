@@ -1,0 +1,63 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Locate project
+        run: |
+          PROJECT_FILE=$(find . -maxdepth 3 -name project.yml -print -quit)
+          test -n "$PROJECT_FILE"
+          echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
+
+      - name: Generate Xcode project
+        run: cd "$PROJECT_DIR" && xcodegen generate
+
+      - name: Build for iPhone
+        run: |
+          cd "$PROJECT_DIR"
+          xcodebuild \
+            -project LiveLingo.xcodeproj \
+            -scheme LiveLingo \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/LiveLingo.app"
+          test -d "$APP_PATH"
+          mkdir -p "$RUNNER_TEMP/Payload"
+          ditto "$APP_PATH" "$RUNNER_TEMP/Payload/LiveLingo.app"
+          cd "$RUNNER_TEMP"
+          zip -qry LiveLingo-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiveLingo-unsigned-IPA
+          path: ${{ runner.temp }}/LiveLingo-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
