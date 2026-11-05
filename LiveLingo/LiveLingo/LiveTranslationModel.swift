@@ -204,42 +204,35 @@ final class LiveTranslationModel: ObservableObject {
                 let originalRect = CGRect(
                     x: box.x * image.size.width,
                     y: (1 - box.y - box.height) * image.size.height,
-                    width: box.width * image.size.width,
-                    height: max(box.height * image.size.height, 34)
+                    width: max(box.width * image.size.width, 24),
+                    height: max(box.height * image.size.height, 18)
                 )
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.alignment = .center
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: max(14, min(28, originalRect.height * 0.62)), weight: .semibold),
-                    .foregroundColor: UIColor.white,
-                    .paragraphStyle: paragraph
-                ]
-                let maxWidth = min(max(originalRect.width * 1.45, 180), image.size.width - 24)
-                let measured = NSString(string: item.displayText).boundingRect(
-                    with: CGSize(width: maxWidth - 16, height: .greatestFiniteMagnitude),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    attributes: attributes,
-                    context: nil
-                )
-                let bubbleSize = CGSize(
-                    width: maxWidth,
-                    height: ceil(measured.height) + 14
-                )
-                let centeredX = min(
-                    max(originalRect.midX, bubbleSize.width / 2 + 8),
-                    image.size.width - bubbleSize.width / 2 - 8
-                )
-                let bubbleRect = CGRect(
-                    x: centeredX - bubbleSize.width / 2,
-                    y: max(4, originalRect.minY - bubbleSize.height - 6),
-                    width: bubbleSize.width,
-                    height: bubbleSize.height
-                )
+                let bubbleRect = originalRect.insetBy(dx: -2, dy: -1)
+                let textRect = bubbleRect.insetBy(dx: 4, dy: 2)
+                var fontSize = max(8, min(28, originalRect.height * 0.7))
+                var attributes: [NSAttributedString.Key: Any] = [:]
+                while fontSize >= 6 {
+                    attributes = [
+                        .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+                        .foregroundColor: UIColor.white,
+                        .paragraphStyle: paragraph
+                    ]
+                    let measured = NSString(string: item.displayText).boundingRect(
+                        with: textRect.size,
+                        options: [.usesLineFragmentOrigin, .usesFontLeading],
+                        attributes: attributes,
+                        context: nil
+                    )
+                    if measured.width <= textRect.width && measured.height <= textRect.height { break }
+                    fontSize -= 1
+                }
 
                 UIColor.black.withAlphaComponent(0.86).setFill()
-                UIBezierPath(roundedRect: bubbleRect, cornerRadius: 8).fill()
+                UIBezierPath(roundedRect: bubbleRect, cornerRadius: 4).fill()
                 item.displayText.draw(
-                    in: bubbleRect.insetBy(dx: 8, dy: 7),
+                    in: textRect,
                     withAttributes: attributes
                 )
             }

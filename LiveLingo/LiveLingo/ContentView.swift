@@ -26,9 +26,6 @@ struct ContentView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 12)
             }
-            PictureInPictureSourceView(manager: pictureInPicture)
-                .frame(width: 2, height: 2)
-                .opacity(0.01)
             bottomBar
         }
         .preferredColorScheme(.light)
@@ -81,7 +78,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("1.5")
+            Text("1.6")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -176,7 +173,11 @@ struct ContentView: View {
                         Text("Start broadcast").font(.subheadline.bold())
                     }
                     .allowsHitTesting(false)
-                    BroadcastPicker()
+                    BroadcastPicker {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                            showLiveSession = true
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: 104)
                 .clipShape(RoundedRectangle(cornerRadius: 24))
@@ -192,17 +193,6 @@ struct ContentView: View {
                 }
             }
 
-            Button { pictureInPicture.toggle() } label: {
-                Label(
-                    pictureInPicture.isActive ? "Stop floating translator" : "Open floating translator",
-                    systemImage: pictureInPicture.isActive ? "pip.exit" : "pip.enter"
-                )
-                .font(.subheadline.bold())
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(.black, in: RoundedRectangle(cornerRadius: 20))
-                .foregroundStyle(.white)
-            }
         }
     }
 
@@ -298,22 +288,9 @@ private struct LiveTranslatorSettingsView: View {
                         }
                         .buttonStyle(.plain)
 
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 26).fill(.black)
-                            if let frame = model.pictureInPictureFrame {
-                                Image(uiImage: frame)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .clipShape(RoundedRectangle(cornerRadius: 26))
-                            } else {
-                                VStack(spacing: 12) {
-                                    ProgressView().tint(.white)
-                                    Text("Waiting for the first translated frame")
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                        }
+                        PictureInPictureSourceView(manager: pictureInPicture)
+                            .background(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 26))
                         .frame(height: 390)
 
                         Toggle("Show original text", isOn: $model.showOriginalText)
@@ -367,43 +344,82 @@ private struct TranslationOverlay: View {
                           y: imageFrame.minY + (1 - item.observation.y - item.observation.height) * imageFrame.height,
                           width: item.observation.width * imageFrame.width,
                           height: max(item.observation.height * imageFrame.height, 22))
-        let bubbleWidth = min(max(rect.width * 1.45, 130), max(imageFrame.width - 16, 130))
-        let centerX = min(
-            max(rect.midX, imageFrame.minX + bubbleWidth / 2 + 8),
-            imageFrame.maxX - bubbleWidth / 2 - 8
+        FittedTranslationLabel(
+            text: item.displayText,
+            baseFontSize: max(10, min(20, rect.height * 0.72))
         )
-        let spaceAbove = max(rect.minY - imageFrame.minY - 5, 1)
+        .frame(width: max(rect.width, 30), height: max(rect.height, 20))
+        .background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 5))
+        .position(x: rect.midX, y: rect.midY)
+    }
+}
 
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            Text(item.displayText)
-                .font(.system(size: max(12, min(20, rect.height * 0.68)), weight: .semibold))
-                .multilineTextAlignment(.center)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(width: bubbleWidth)
-                .background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(.white)
+private struct FittedTranslationLabel: UIViewRepresentable {
+    let text: String
+    let baseFontSize: CGFloat
+
+    func makeUIView(context: Context) -> AutoFittingLabel {
+        let label = AutoFittingLabel()
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.lineBreakMode = .byClipping
+        label.baselineAdjustment = .alignCenters
+        return label
+    }
+
+    func updateUIView(_ label: AutoFittingLabel, context: Context) {
+        label.text = text
+        label.baseFontSize = baseFontSize
+        label.setNeedsLayout()
+    }
+}
+
+private final class AutoFittingLabel: UILabel {
+    var baseFontSize: CGFloat = 16
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0, let text, !text.isEmpty else { return }
+
+        var size = baseFontSize
+        while size > 5 {
+            let candidate = UIFont.systemFont(ofSize: size, weight: .semibold)
+            let measured = NSString(string: text).boundingRect(
+                with: bounds.size,
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: candidate],
+                context: nil
+            )
+            if measured.width <= bounds.width && measured.height <= bounds.height {
+                font = candidate
+                return
+            }
+            size -= 0.5
         }
-        .frame(width: bubbleWidth, height: spaceAbove, alignment: .bottom)
-        .position(x: centerX, y: imageFrame.minY + spaceAbove / 2)
+        font = .systemFont(ofSize: 5, weight: .semibold)
     }
 }
 
 private struct BroadcastPicker: UIViewRepresentable {
+    let onTapped: () -> Void
+
     func makeUIView(context: Context) -> BroadcastPickerContainer {
-        BroadcastPickerContainer()
+        BroadcastPickerContainer(onTapped: onTapped)
     }
-    func updateUIView(_ uiView: BroadcastPickerContainer, context: Context) {}
+    func updateUIView(_ uiView: BroadcastPickerContainer, context: Context) {
+        uiView.onTapped = onTapped
+    }
 }
 
 private final class BroadcastPickerContainer: UIView {
     private let picker = RPSystemBroadcastPickerView(frame: .zero)
+    var onTapped: () -> Void
+    private weak var hookedButton: UIButton?
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(onTapped: @escaping () -> Void) {
+        self.onTapped = onTapped
+        super.init(frame: .zero)
         picker.showsMicrophoneButton = false
         picker.preferredExtension = installedBroadcastExtensionIdentifier()
         picker.tintColor = .clear
@@ -439,6 +455,13 @@ private final class BroadcastPickerContainer: UIView {
         picker.subviews.compactMap { $0 as? UIButton }.forEach { button in
             button.frame = picker.bounds
             button.imageView?.isHidden = true
+            if hookedButton !== button {
+                hookedButton?.removeTarget(self, action: #selector(pickerTapped), for: .touchUpInside)
+                button.addTarget(self, action: #selector(pickerTapped), for: .touchUpInside)
+                hookedButton = button
+            }
         }
     }
+
+    @objc private func pickerTapped() { onTapped() }
 }

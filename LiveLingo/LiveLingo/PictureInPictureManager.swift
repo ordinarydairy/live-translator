@@ -37,6 +37,7 @@ final class PictureInPictureManager: NSObject, ObservableObject {
 
     func layout(in bounds: CGRect) {
         displayLayer.frame = bounds
+        refreshAvailability()
     }
 
     func toggle() {
@@ -45,7 +46,21 @@ final class PictureInPictureManager: NSObject, ObservableObject {
             controller.stopPictureInPicture()
         } else {
             configureAudioSession()
+            attemptStart(retriesRemaining: 8)
+        }
+    }
+
+    private func attemptStart(retriesRemaining: Int) {
+        guard let controller, !controller.isPictureInPictureActive else { return }
+        refreshAvailability()
+        if controller.isPictureInPicturePossible {
             controller.startPictureInPicture()
+            return
+        }
+        guard retriesRemaining > 0 else { return }
+        controller.invalidatePlaybackState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.attemptStart(retriesRemaining: retriesRemaining - 1)
         }
     }
 

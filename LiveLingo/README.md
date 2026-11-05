@@ -40,6 +40,10 @@ Group and LiveLingo automatically opens the **Live translator** session page.
 That page contains the active languages, connection status, translated preview,
 original-text toggle, and an always-available PiP control with a waiting frame.
 
+Translation overlays use the same rectangle as the detected source text and
+shrink the font until the complete translation fits. This prevents adjacent
+rows in lists from overlapping and avoids ellipsis truncation.
+
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
 ## Build an IPA without a Mac
