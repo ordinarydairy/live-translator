@@ -88,8 +88,9 @@ final class PictureInPictureManager: NSObject, ObservableObject {
         )
 
         guard let sampleBuffer = makeSampleBuffer(from: pixelBuffer) else { return }
-        if displayLayer.status == .failed { displayLayer.flush() }
-        displayLayer.enqueue(sampleBuffer)
+        let renderer = displayLayer.sampleBufferRenderer
+        if renderer.status == .failed { renderer.flush() }
+        renderer.enqueue(sampleBuffer)
         refreshAvailability()
     }
 

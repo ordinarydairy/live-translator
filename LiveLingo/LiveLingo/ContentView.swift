@@ -78,7 +78,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("1.7")
+            Text("1.8")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -353,7 +353,7 @@ private struct TranslationOverlay: View {
             baseFontSize: max(10, min(20, rect.height * 0.72))
         )
         .frame(width: max(rect.width, 30), height: max(rect.height, 20))
-        .background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 5))
+        .clipped()
         .position(x: rect.midX, y: rect.midY)
     }
 }
@@ -365,6 +365,9 @@ private struct FittedTranslationLabel: UIViewRepresentable {
     func makeUIView(context: Context) -> AutoFittingLabel {
         let label = AutoFittingLabel()
         label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.86)
+        label.layer.cornerRadius = 5
+        label.layer.masksToBounds = true
         label.textAlignment = .center
         label.numberOfLines = 0
         label.lineBreakMode = .byClipping

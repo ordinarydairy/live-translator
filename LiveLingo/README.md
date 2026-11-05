@@ -48,6 +48,11 @@ At runtime, the app and extension read the App Group identifier from their
 embedded signed provisioning profiles. This accommodates sideloading tools
 that rewrite App Group identifiers while re-signing the IPA.
 
+The extension also streams frames to the app through a TCP loopback connection
+on the device. This is the primary live path when sideload signing removes App
+Group access. A second loopback port carries the stop command when the live
+translator page closes.
+
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
 ## Build an IPA without a Mac

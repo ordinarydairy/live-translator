@@ -51,6 +51,7 @@ final class LiveTranslationModel: ObservableObject {
     @Published var translationConfiguration: TranslationSession.Configuration?
 
     private var pollingTask: Task<Void, Never>?
+    private let loopbackServer = LoopbackFrameServer()
     private var pending: [ScreenObservation] = []
     private var lastObservationData: Data?
     private var translationGeneration = 0
@@ -60,6 +61,18 @@ final class LiveTranslationModel: ObservableObject {
 
     func startPolling() async {
         guard pollingTask == nil else { return }
+        loopbackServer.onFrame = { [weak self] imageData, observationData in
+            Task { @MainActor in
+                guard let self,
+                      let image = UIImage(data: imageData),
+                      let observations = try? JSONDecoder().decode([ScreenObservation].self, from: observationData)
+                else { return }
+                self.optimisticBroadcastUntil = Date().addingTimeInterval(5)
+                self.isBroadcasting = true
+                self.accept(image: image, observations: observations, live: true)
+            }
+        }
+        loopbackServer.start()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.refreshBroadcastStatus()
@@ -72,6 +85,7 @@ final class LiveTranslationModel: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+        loopbackServer.stop()
     }
 
     private func refreshBroadcastStatus() {
@@ -94,6 +108,7 @@ final class LiveTranslationModel: ObservableObject {
         isBroadcasting = false
         AppGroup.preferences?.set(true, forKey: AppGroup.stopBroadcastKey)
         AppGroup.preferences?.synchronize()
+        LoopbackTransport.sendStop()
     }
 
     private func loadLatestFrame() async {

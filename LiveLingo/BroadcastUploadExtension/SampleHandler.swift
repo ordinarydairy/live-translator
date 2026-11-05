@@ -1,4 +1,5 @@
 import CoreImage
+import Network
 import ReplayKit
 import UIKit
 import Vision
@@ -8,13 +9,17 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private let queue = DispatchQueue(label: "LiveLingo.OCR", qos: .userInitiated)
     private var lastProcessed = Date.distantPast
     private var isProcessing = false
+    private var stopListener: NWListener?
 
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         AppGroup.preferences?.set(false, forKey: AppGroup.stopBroadcastKey)
         setBroadcastActive(true)
+        startStopListener()
     }
 
     override func broadcastFinished() {
+        stopListener?.cancel()
+        stopListener = nil
         setBroadcastActive(false)
     }
 
@@ -22,6 +27,25 @@ final class SampleHandler: RPBroadcastSampleHandler {
         AppGroup.preferences?.set(active, forKey: AppGroup.broadcastActiveKey)
         AppGroup.preferences?.set(Date().timeIntervalSince1970, forKey: AppGroup.broadcastHeartbeatKey)
         AppGroup.preferences?.synchronize()
+    }
+
+    private func startStopListener() {
+        guard let listener = try? NWListener(using: .tcp, on: LoopbackTransport.stopPort) else { return }
+        stopListener = listener
+        listener.newConnectionHandler = { [weak self] connection in
+            connection.start(queue: .global(qos: .userInitiated))
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 32) { data, _, _, _ in
+                connection.cancel()
+                guard data == Data("STOP".utf8) else { return }
+                self?.setBroadcastActive(false)
+                self?.finishBroadcastWithError(NSError(
+                    domain: "LiveLingo.Broadcast",
+                    code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: "Broadcast stopped from LiveLingo"]
+                ))
+            }
+        }
+        listener.start(queue: .global(qos: .userInitiated))
     }
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
@@ -77,18 +101,18 @@ final class SampleHandler: RPBroadcastSampleHandler {
     }
 
     private func store(pixelBuffer: CVPixelBuffer, observations: [ScreenObservation]) throws {
-        guard let frameURL = AppGroup.frameURL,
-              let observationURL = AppGroup.observationURL
-        else { return }
-
         let image = CIImage(cvPixelBuffer: pixelBuffer)
         guard let cgImage = context.createCGImage(image, from: image.extent),
               let data = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.72)
         else { return }
 
-        try data.write(to: frameURL, options: Data.WritingOptions.atomic)
         let json = try JSONEncoder().encode(observations)
-        try json.write(to: observationURL, options: Data.WritingOptions.atomic)
+        if let frameURL = AppGroup.frameURL,
+           let observationURL = AppGroup.observationURL {
+            try data.write(to: frameURL, options: Data.WritingOptions.atomic)
+            try json.write(to: observationURL, options: Data.WritingOptions.atomic)
+        }
+        LoopbackTransport.sendFrame(imageData: data, observationsData: json)
     }
 }
 
