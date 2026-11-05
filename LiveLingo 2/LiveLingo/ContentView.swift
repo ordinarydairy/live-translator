@@ -49,6 +49,7 @@ struct ContentView: View {
                    let image = UIImage(data: data) {
                     await model.scanImportedImage(image)
                 }
+                selectedPhoto = nil
             }
         }
     }
@@ -119,9 +120,13 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 22).fill(Color(red: 0.96, green: 0.97, blue: 0.95))
                 if let image = model.frameImage {
                     GeometryReader { proxy in
-                        Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        let imageFrame = aspectFitRect(imageSize: image.size, in: proxy.size)
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         ForEach(model.translations) { item in
-                            TranslationOverlay(item: item, canvasSize: proxy.size)
+                            TranslationOverlay(item: item, imageFrame: imageFrame)
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 22))
@@ -144,16 +149,14 @@ struct ContentView: View {
 
     private var actionGrid: some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 24).fill(Color(red: 0.55, green: 0.84, blue: 0.31))
-                VStack(spacing: 8) {
-                    Image(systemName: "dot.radiowaves.left.and.right").font(.title2.bold())
-                    Text("Start broadcast").font(.subheadline.bold())
-                }
-                .allowsHitTesting(false)
-                BroadcastPicker().opacity(0.02)
+            VStack(spacing: 4) {
+                BroadcastPicker()
+                    .frame(width: 58, height: 58)
+                Text("Start broadcast").font(.subheadline.bold())
+                Text("Tap the broadcast icon").font(.system(size: 9, weight: .medium)).foregroundStyle(.black.opacity(0.52))
             }
             .frame(maxWidth: .infinity, minHeight: 104)
+            .background(Color(red: 0.55, green: 0.84, blue: 0.31), in: RoundedRectangle(cornerRadius: 24))
 
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                 VStack(spacing: 8) {
@@ -200,17 +203,31 @@ struct ContentView: View {
             .background(selected ? Color(red: 1.0, green: 0.88, blue: 0.3) : .clear, in: Capsule())
             .foregroundStyle(.black.opacity(selected ? 1 : 0.45))
     }
+
+    private func aspectFitRect(imageSize: CGSize, in container: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return CGRect(origin: .zero, size: container)
+        }
+        let scale = min(container.width / imageSize.width, container.height / imageSize.height)
+        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: (container.width - size.width) / 2,
+            y: (container.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
 }
 
 private struct TranslationOverlay: View {
     let item: TranslatedObservation
-    let canvasSize: CGSize
+    let imageFrame: CGRect
 
     var body: some View {
-        let rect = CGRect(x: item.observation.x * canvasSize.width,
-                          y: (1 - item.observation.y - item.observation.height) * canvasSize.height,
-                          width: item.observation.width * canvasSize.width,
-                          height: max(item.observation.height * canvasSize.height, 26))
+        let rect = CGRect(x: imageFrame.minX + item.observation.x * imageFrame.width,
+                          y: imageFrame.minY + (1 - item.observation.y - item.observation.height) * imageFrame.height,
+                          width: item.observation.width * imageFrame.width,
+                          height: max(item.observation.height * imageFrame.height, 22))
         Text(item.displayText)
             .font(.system(size: max(11, min(18, rect.height * 0.58)), weight: .semibold))
             .lineLimit(3).minimumScaleFactor(0.65).padding(.horizontal, 6)
@@ -223,8 +240,8 @@ private struct TranslationOverlay: View {
 private struct BroadcastPicker: UIViewRepresentable {
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
         let picker = RPSystemBroadcastPickerView(frame: .zero)
-        picker.preferredExtension = "com.example.LiveLingo.BroadcastUpload"
         picker.showsMicrophoneButton = false
+        picker.tintColor = .black
         return picker
     }
     func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {}
