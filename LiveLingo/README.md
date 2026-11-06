@@ -61,6 +61,11 @@ The PiP image is a wide, text-only translation card. It selects the most
 prominent OCR regions, renders the original text in white, and places the
 translation in mint beneath a divider instead of mirroring the captured screen.
 
+ReplayKit frame orientation is applied before OCR and JPEG delivery. If the
+extension returns no observations, the host performs a fallback Vision pass.
+The app includes a lime LiveLingo icon, and GitHub Actions exports versioned
+artifacts and files such as `LiveLingo-2.1-unsigned.ipa`.
+
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
 ## Build an IPA without a Mac

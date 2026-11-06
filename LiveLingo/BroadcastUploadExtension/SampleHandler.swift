@@ -1,4 +1,5 @@
 import CoreImage
+import ImageIO
 import Network
 import ReplayKit
 import UIKit
@@ -70,16 +71,26 @@ final class SampleHandler: RPBroadcastSampleHandler {
         lastProcessed = Date()
         isProcessing = true
         setBroadcastActive(true)
+        let frameOrientation = orientation(from: sampleBuffer)
 
         queue.async { [weak self] in
             defer {
                 self?.isProcessing = false
             }
-            self?.recognizeAndStore(pixelBuffer)
+            self?.recognizeAndStore(pixelBuffer, orientation: frameOrientation)
         }
     }
 
-    private func recognizeAndStore(_ pixelBuffer: CVPixelBuffer) {
+    private func orientation(from sampleBuffer: CMSampleBuffer) -> CGImagePropertyOrientation {
+        guard let value = CMGetAttachment(
+            sampleBuffer,
+            key: RPVideoSampleOrientationKey as CFString,
+            attachmentModeOut: nil
+        ) as? NSNumber else { return .up }
+        return CGImagePropertyOrientation(rawValue: value.uint32Value) ?? .up
+    }
+
+    private func recognizeAndStore(_ pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
@@ -88,20 +99,36 @@ final class SampleHandler: RPBroadcastSampleHandler {
         request.minimumTextHeight = 0.01
 
         do {
-            try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up).perform([request])
-            let observations = (request.results ?? []).compactMap { result -> ScreenObservation? in
+            try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation).perform([request])
+            var results = request.results ?? []
+
+            if results.isEmpty {
+                let fallback = VNRecognizeTextRequest()
+                fallback.recognitionLevel = .accurate
+                fallback.usesLanguageCorrection = true
+                fallback.automaticallyDetectsLanguage = true
+                fallback.minimumTextHeight = 0.008
+                try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation).perform([fallback])
+                results = fallback.results ?? []
+            }
+
+            let observations = results.compactMap { result -> ScreenObservation? in
                 guard let candidate = result.topCandidates(1).first else { return nil }
                 let box = result.boundingBox
                 return ScreenObservation(text: candidate.string, x: box.minX, y: box.minY, width: box.width, height: box.height)
             }
-            try store(pixelBuffer: pixelBuffer, observations: observations)
+            try store(pixelBuffer: pixelBuffer, orientation: orientation, observations: observations)
         } catch {
             // Dropping a frame is preferable to ending the broadcast.
         }
     }
 
-    private func store(pixelBuffer: CVPixelBuffer, observations: [ScreenObservation]) throws {
-        let image = CIImage(cvPixelBuffer: pixelBuffer)
+    private func store(
+        pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation,
+        observations: [ScreenObservation]
+    ) throws {
+        let image = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         guard let cgImage = context.createCGImage(image, from: image.extent),
               let data = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.72)
         else { return }

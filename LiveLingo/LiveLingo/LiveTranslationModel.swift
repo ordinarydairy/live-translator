@@ -69,7 +69,11 @@ final class LiveTranslationModel: ObservableObject {
                 else { return }
                 self.optimisticBroadcastUntil = Date().addingTimeInterval(5)
                 self.isBroadcasting = true
-                self.accept(image: image, observations: observations, live: true)
+                if observations.isEmpty {
+                    await self.scanImage(image, live: true)
+                } else {
+                    self.accept(image: image, observations: observations, live: true)
+                }
             }
         }
         loopbackServer.start()
@@ -122,10 +126,18 @@ final class LiveTranslationModel: ObservableObject {
         else { return }
 
         lastObservationData = observationData
-        accept(image: image, observations: observations, live: true)
+        if observations.isEmpty {
+            await scanImage(image, live: true)
+        } else {
+            accept(image: image, observations: observations, live: true)
+        }
     }
 
     func scanImportedImage(_ image: UIImage) async {
+        await scanImage(image, live: false)
+    }
+
+    private func scanImage(_ image: UIImage, live: Bool) async {
         let normalizedImage = normalized(image)
         guard let cgImage = normalizedImage.cgImage else { return }
         let request = VNRecognizeTextRequest()
@@ -142,7 +154,7 @@ final class LiveTranslationModel: ObservableObject {
                 let box = result.boundingBox
                 return ScreenObservation(text: candidate.string, x: box.minX, y: box.minY, width: box.width, height: box.height)
             }
-            accept(image: normalizedImage, observations: observations, live: false)
+            accept(image: normalizedImage, observations: observations, live: live)
         } catch {
             translations = []
         }

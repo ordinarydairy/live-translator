@@ -19,6 +19,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.LiveLingo
         INFOPLIST_FILE: LiveLingo/Info.plist
         CODE_SIGN_ENTITLEMENTS: LiveLingo/LiveLingo.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: BroadcastUploadExtension
   BroadcastUploadExtension:
