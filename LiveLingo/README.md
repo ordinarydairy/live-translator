@@ -104,6 +104,8 @@ that preserves and signs the embedded extension.
 - Version 2.4 refreshes OCR about twice per second, expires stale PiP content,
   and uses a disclosed online fallback for live translation while retaining
   on-device Apple Translation for imported photos.
+- Version 2.5 starts live network translation directly from the ReplayKit frame
+  pipeline instead of waiting for SwiftUI's foreground Translation callback.
 - Persist user language choices and expose supported-language availability.
 - Add rotation-aware OCR orientation and aspect-fit coordinate conversion.
 - Redact frames from logs and define a clear privacy/retention policy.

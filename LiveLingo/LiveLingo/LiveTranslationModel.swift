@@ -65,6 +65,7 @@ final class LiveTranslationModel: ObservableObject {
     private var lastTextSignature = ""
     private var translationRequestedAt = Date.distantPast
     private var lastFrameReceivedAt = Date.distantPast
+    private var liveTranslationTask: Task<Void, Never>?
 
     init() {
         let preferences = AppGroup.preferences
@@ -210,25 +211,51 @@ final class LiveTranslationModel: ObservableObject {
             .sorted()
             .joined(separator: "|")
         if live, signature == lastTextSignature { return }
-        if live, translations.isEmpty,
-           translationConfiguration != nil,
-           Date().timeIntervalSince(translationRequestedAt) < 8 {
-            return
-        }
         lastTextSignature = signature
         pending = observations
         translations = []
         translationGeneration += 1
         if live {
             if observations.isEmpty {
+                liveTranslationTask?.cancel()
                 translationStatus = "No text detected"
                 renderMessageFrame("No text detected")
             } else {
                 translationStatus = "Reading screen…"
                 renderDetectedTextFrame(observations)
+                startLiveTranslation(observations, generation: translationGeneration)
             }
+            return
         }
         requestTranslation()
+    }
+
+    private func startLiveTranslation(_ observations: [ScreenObservation], generation: Int) {
+        liveTranslationTask?.cancel()
+        liveTranslationTask = Task { [weak self] in
+            guard let self else { return }
+            self.translationStatus = "Translating…"
+            do {
+                let online = try await self.translateOnline(observations)
+                guard !Task.isCancelled, generation == self.translationGeneration else { return }
+                self.translations = observations.map {
+                    TranslatedObservation(
+                        id: $0.id,
+                        observation: $0,
+                        translatedText: online[$0.id] ?? $0.text,
+                        showOriginal: self.showOriginalText
+                    )
+                }
+                self.translationStatus = "Live translation"
+                self.renderPictureInPictureFrame()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, generation == self.translationGeneration else { return }
+                self.translationStatus = "Live translation failed — check internet access"
+                self.renderMessageFrame(self.translationStatus)
+            }
+        }
     }
 
     private func expireStaleFrame() {
@@ -332,16 +359,6 @@ final class LiveTranslationModel: ObservableObject {
         let generation = translationGeneration
         translationStatus = "Translating…"
         do {
-            if isReceiving {
-                let online = try await translateOnline(current)
-                guard generation == translationGeneration else { return }
-                translations = current.map {
-                    TranslatedObservation(id: $0.id, observation: $0, translatedText: online[$0.id] ?? $0.text, showOriginal: showOriginalText)
-                }
-                translationStatus = "Live translation"
-                renderPictureInPictureFrame()
-                return
-            }
             let requests = current.map { TranslationSession.Request(sourceText: $0.text, clientIdentifier: $0.id.uuidString) }
             let responses = try await session.translations(from: requests)
             let byID = Dictionary(uniqueKeysWithValues: responses.compactMap { response -> (String, String)? in

@@ -77,7 +77,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("2.4")
+            Text("2.5")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
