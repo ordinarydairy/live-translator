@@ -66,6 +66,10 @@ extension returns no observations, the host performs a fallback Vision pass.
 The app includes a lime LiveLingo icon, and GitHub Actions exports versioned
 artifacts and files such as `LiveLingo-2.1-unsigned.ipa`.
 
+The live page owns its own Translation session and PiP-frame subscription. A
+looping silent audio resource keeps the host process active while PiP is open,
+allowing new OCR frames to replace the text detected on LiveLingo's own screen.
+
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
 ## Build an IPA without a Mac

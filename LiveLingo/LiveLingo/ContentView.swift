@@ -46,7 +46,6 @@ struct ContentView: View {
             await model.translatePending(using: session)
         }
         .task { await model.startPolling() }
-        .onDisappear { model.stopPolling() }
         .onReceive(model.$pictureInPictureFrame) { frame in
             pictureInPicture.enqueue(frame)
         }
@@ -78,7 +77,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("2.1")
+            Text("2.2")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -329,7 +328,11 @@ private struct LiveTranslatorSettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        pictureInPicture.stop()
+                        model.requestBroadcastStop()
+                        dismiss()
+                    }
                 }
             }
             .sheet(isPresented: $showLanguages) {
@@ -337,9 +340,13 @@ private struct LiveTranslatorSettingsView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
-            .onDisappear {
-                model.requestBroadcastStop()
+            .translationTask(model.translationConfiguration) { session in
+                await model.translatePending(using: session)
             }
+            .onReceive(model.$pictureInPictureFrame) { frame in
+                pictureInPicture.enqueue(frame)
+            }
+            .interactiveDismissDisabled()
         }
     }
 }

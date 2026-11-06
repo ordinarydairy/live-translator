@@ -12,6 +12,7 @@ final class PictureInPictureManager: NSObject, ObservableObject {
     private let floatingImageView = UIImageView()
     private let floatingController = AVPictureInPictureVideoCallViewController()
     private var controller: AVPictureInPictureController?
+    private var keepalivePlayer: AVAudioPlayer?
     private weak var sourceView: UIView?
     private var latestImage: UIImage?
 
@@ -95,6 +96,11 @@ final class PictureInPictureManager: NSObject, ObservableObject {
         attemptStart(retriesRemaining: 12)
     }
 
+    func stop() {
+        controller?.stopPictureInPicture()
+        stopKeepalive()
+    }
+
     private func attemptStart(retriesRemaining: Int) {
         guard let controller, !controller.isPictureInPictureActive else { return }
         refreshAvailability()
@@ -104,6 +110,7 @@ final class PictureInPictureManager: NSObject, ObservableObject {
             return
         }
         guard retriesRemaining > 0 else {
+            stopKeepalive()
             statusText = "Picture in Picture is not ready. Keep the preview visible and try again."
             return
         }
@@ -117,6 +124,23 @@ final class PictureInPictureManager: NSObject, ObservableObject {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .moviePlayback)
         try? session.setActive(true)
+        guard let url = Bundle.main.url(forResource: "Silent", withExtension: "m4a"),
+              let player = try? AVAudioPlayer(contentsOf: url)
+        else {
+            statusText = "PiP audio keepalive resource is missing"
+            return
+        }
+        player.numberOfLoops = -1
+        player.volume = 0.01
+        player.prepareToPlay()
+        player.play()
+        keepalivePlayer = player
+    }
+
+    private func stopKeepalive() {
+        keepalivePlayer?.stop()
+        keepalivePlayer = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func makeWaitingFrame() -> UIImage {
@@ -154,6 +178,7 @@ extension PictureInPictureManager: AVPictureInPictureControllerDelegate {
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         Task { @MainActor in
             self.isActive = false
+            self.stopKeepalive()
             self.refreshAvailability()
         }
     }
@@ -164,6 +189,7 @@ extension PictureInPictureManager: AVPictureInPictureControllerDelegate {
     ) {
         Task { @MainActor in
             self.isActive = false
+            self.stopKeepalive()
             self.statusText = "PiP failed: \(error.localizedDescription)"
         }
     }

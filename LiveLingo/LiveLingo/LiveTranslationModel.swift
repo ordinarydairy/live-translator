@@ -166,7 +166,43 @@ final class LiveTranslationModel: ObservableObject {
         pending = observations
         translations = []
         translationGeneration += 1
+        if live {
+            renderDetectedTextFrame(observations)
+        }
         requestTranslation()
+    }
+
+    private func renderDetectedTextFrame(_ observations: [ScreenObservation]) {
+        guard !observations.isEmpty else { return }
+        let detected = observations
+            .sorted {
+                ($0.width * $0.height) > ($1.width * $1.height)
+            }
+            .prefix(5)
+            .sorted { $0.y > $1.y }
+            .map(\.text)
+            .joined(separator: "\n")
+
+        let cardSize = CGSize(width: 1200, height: 420)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        pictureInPictureFrame = UIGraphicsImageRenderer(size: cardSize, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: cardSize))
+            drawFittedText(
+                detected,
+                in: CGRect(x: 44, y: 52, width: 1112, height: 270),
+                color: .white,
+                maximumFontSize: 48
+            )
+            drawFittedText(
+                "Translating…",
+                in: CGRect(x: 44, y: 340, width: 1112, height: 48),
+                color: UIColor(red: 0.42, green: 0.96, blue: 0.83, alpha: 1),
+                maximumFontSize: 28
+            )
+        }
     }
 
     private func requestTranslation() {
