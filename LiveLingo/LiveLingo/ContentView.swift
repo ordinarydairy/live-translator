@@ -77,7 +77,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("2.3")
+            Text("2.4")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -316,6 +316,16 @@ private struct LiveTranslatorSettingsView: View {
                         Text(pictureInPicture.statusText)
                             .font(.caption.bold())
                             .foregroundStyle(.black.opacity(0.72))
+                            .multilineTextAlignment(.center)
+
+                        Text(model.translationStatus)
+                            .font(.caption.bold())
+                            .foregroundStyle(.black.opacity(0.72))
+                            .multilineTextAlignment(.center)
+
+                        Text("Live OCR text is sent securely to an online translation service. Photo translation stays on-device.")
+                            .font(.caption2)
+                            .foregroundStyle(.black.opacity(0.52))
                             .multilineTextAlignment(.center)
 
                         Text("Keep Picture in Picture open before switching to the app you want translated.")

@@ -101,6 +101,9 @@ that preserves and signs the embedded extension.
 
 - Version 2.3 stabilizes repeated OCR frames, merges duplicate detections, and
   adds an optional rectangular screen-area selector to the live settings page.
+- Version 2.4 refreshes OCR about twice per second, expires stale PiP content,
+  and uses a disclosed online fallback for live translation while retaining
+  on-device Apple Translation for imported photos.
 - Persist user language choices and expose supported-language availability.
 - Add rotation-aware OCR orientation and aspect-fit coordinate conversion.
 - Redact frames from logs and define a clear privacy/retention policy.

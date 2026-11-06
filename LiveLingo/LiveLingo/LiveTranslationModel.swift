@@ -49,6 +49,7 @@ final class LiveTranslationModel: ObservableObject {
         }
     }
     @Published var translationConfiguration: TranslationSession.Configuration?
+    @Published var translationStatus = "Waiting for text"
     @Published var regionEnabled = AppGroup.preferences?.bool(forKey: AppGroup.regionEnabledKey) ?? false
     @Published var regionCenterX = 0.5
     @Published var regionCenterY = 0.5
@@ -63,6 +64,7 @@ final class LiveTranslationModel: ObservableObject {
     private var optimisticBroadcastUntil = Date.distantPast
     private var lastTextSignature = ""
     private var translationRequestedAt = Date.distantPast
+    private var lastFrameReceivedAt = Date.distantPast
 
     init() {
         let preferences = AppGroup.preferences
@@ -117,6 +119,7 @@ final class LiveTranslationModel: ObservableObject {
             while !Task.isCancelled {
                 self?.refreshBroadcastStatus()
                 await self?.loadLatestFrame()
+                self?.expireStaleFrame()
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
@@ -198,6 +201,7 @@ final class LiveTranslationModel: ObservableObject {
 
     private func accept(image: UIImage, observations: [ScreenObservation], live: Bool) {
         let observations = deduplicated(observations)
+        lastFrameReceivedAt = Date()
         frameImage = image
         isReceiving = live
         let signature = observations
@@ -216,9 +220,36 @@ final class LiveTranslationModel: ObservableObject {
         translations = []
         translationGeneration += 1
         if live {
-            renderDetectedTextFrame(observations)
+            if observations.isEmpty {
+                translationStatus = "No text detected"
+                renderMessageFrame("No text detected")
+            } else {
+                translationStatus = "Reading screen…"
+                renderDetectedTextFrame(observations)
+            }
         }
         requestTranslation()
+    }
+
+    private func expireStaleFrame() {
+        guard isReceiving,
+              Date().timeIntervalSince(lastFrameReceivedAt) > 1.6,
+              translationStatus != "Waiting for a new screen frame…"
+        else { return }
+        pending = []
+        translations = []
+        lastTextSignature = ""
+        translationStatus = "Waiting for a new screen frame…"
+        renderMessageFrame("Waiting for a new screen frame…")
+    }
+
+    private func renderMessageFrame(_ message: String) {
+        let size = CGSize(width: 1200, height: 420)
+        pictureInPictureFrame = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            drawFittedText(message, in: CGRect(x: 60, y: 80, width: 1080, height: 260), color: .white, maximumFontSize: 46)
+        }
     }
 
     private func deduplicated(_ input: [ScreenObservation]) -> [ScreenObservation] {
@@ -299,7 +330,18 @@ final class LiveTranslationModel: ObservableObject {
         guard !pending.isEmpty else { return }
         let current = pending
         let generation = translationGeneration
+        translationStatus = "Translating…"
         do {
+            if isReceiving {
+                let online = try await translateOnline(current)
+                guard generation == translationGeneration else { return }
+                translations = current.map {
+                    TranslatedObservation(id: $0.id, observation: $0, translatedText: online[$0.id] ?? $0.text, showOriginal: showOriginalText)
+                }
+                translationStatus = "Live translation"
+                renderPictureInPictureFrame()
+                return
+            }
             let requests = current.map { TranslationSession.Request(sourceText: $0.text, clientIdentifier: $0.id.uuidString) }
             let responses = try await session.translations(from: requests)
             let byID = Dictionary(uniqueKeysWithValues: responses.compactMap { response -> (String, String)? in
@@ -315,12 +357,62 @@ final class LiveTranslationModel: ObservableObject {
                     showOriginal: showOriginalText
                 )
             }
+            translationStatus = "Translation ready"
             renderPictureInPictureFrame()
         } catch {
-            guard generation == translationGeneration else { return }
-            translations = current.map { .init(id: $0.id, observation: $0, translatedText: $0.text, showOriginal: showOriginalText) }
-            renderPictureInPictureFrame()
+            do {
+                let requests = current.map { TranslationSession.Request(sourceText: $0.text, clientIdentifier: $0.id.uuidString) }
+                let responses = try await session.translations(from: requests)
+                let byID = Dictionary(uniqueKeysWithValues: responses.compactMap { response -> (String, String)? in
+                    guard let id = response.clientIdentifier else { return nil }
+                    return (id, response.targetText)
+                })
+                guard generation == translationGeneration else { return }
+                translations = current.map { .init(id: $0.id, observation: $0, translatedText: byID[$0.id.uuidString] ?? $0.text, showOriginal: showOriginalText) }
+                translationStatus = "Translation ready"
+                renderPictureInPictureFrame()
+            } catch {
+                guard generation == translationGeneration else { return }
+                translationStatus = "Translation failed — check your connection or language download"
+                renderMessageFrame(translationStatus)
+            }
         }
+    }
+
+    private func translateOnline(_ observations: [ScreenObservation]) async throws -> [UUID: String] {
+        let source = sourceLanguage.code.isEmpty ? "auto" : sourceLanguage.code.replacingOccurrences(of: "zh-Hans", with: "zh-CN")
+        let target = targetLanguage.code.replacingOccurrences(of: "zh-Hans", with: "zh-CN")
+        let selected = Array(observations.prefix(8))
+        var output: [UUID: String] = [:]
+        try await withThrowingTaskGroup(of: (UUID, String)?.self) { group in
+            for observation in selected {
+                group.addTask {
+                    var components = URLComponents(string: "https://translate.googleapis.com/translate_a/single")!
+                    components.queryItems = [
+                        URLQueryItem(name: "client", value: "gtx"),
+                        URLQueryItem(name: "sl", value: source),
+                        URLQueryItem(name: "tl", value: target),
+                        URLQueryItem(name: "dt", value: "t"),
+                        URLQueryItem(name: "q", value: observation.text)
+                    ]
+                    guard let url = components.url else { return nil }
+                    var request = URLRequest(url: url)
+                    request.timeoutInterval = 4
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200,
+                          let root = try JSONSerialization.jsonObject(with: data) as? [Any],
+                          let segments = root.first as? [Any]
+                    else { throw URLError(.badServerResponse) }
+                    let translated = segments.compactMap { ($0 as? [Any])?.first as? String }.joined()
+                    return translated.isEmpty ? nil : (observation.id, translated)
+                }
+            }
+            for try await result in group {
+                if let (id, text) = result { output[id] = text }
+            }
+        }
+        guard !output.isEmpty else { throw URLError(.cannotParseResponse) }
+        return output
     }
 
     private func resetTranslation() {

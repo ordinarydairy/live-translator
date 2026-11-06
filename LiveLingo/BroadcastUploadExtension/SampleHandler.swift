@@ -63,7 +63,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         }
 
         guard sampleBufferType == .video,
-              Date().timeIntervalSince(lastProcessed) >= 1.0,
+              Date().timeIntervalSince(lastProcessed) >= 0.4,
               !isProcessing,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
         else { return }
