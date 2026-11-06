@@ -150,7 +150,6 @@ final class LiveTranslationModel: ObservableObject {
 
     private func accept(image: UIImage, observations: [ScreenObservation], live: Bool) {
         frameImage = image
-        pictureInPictureFrame = image
         isReceiving = live
         pending = observations
         translations = []
@@ -222,51 +221,72 @@ final class LiveTranslationModel: ObservableObject {
     }
 
     private func renderPictureInPictureFrame() {
-        guard let image = frameImage else { return }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = image.scale
-        format.opaque = true
-        pictureInPictureFrame = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: image.size))
-
-            for item in translations {
-                let box = item.observation
-                let originalRect = CGRect(
-                    x: box.x * image.size.width,
-                    y: (1 - box.y - box.height) * image.size.height,
-                    width: max(box.width * image.size.width, 24),
-                    height: max(box.height * image.size.height, 18)
-                )
-                let paragraph = NSMutableParagraphStyle()
-                paragraph.alignment = .center
-                let bubbleRect = originalRect.insetBy(dx: -2, dy: -1)
-                let textRect = bubbleRect.insetBy(dx: 4, dy: 2)
-                var fontSize = max(8, min(28, originalRect.height * 0.7))
-                var attributes: [NSAttributedString.Key: Any] = [:]
-                while fontSize >= 6 {
-                    attributes = [
-                        .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
-                        .foregroundColor: UIColor.white,
-                        .paragraphStyle: paragraph
-                    ]
-                    let measured = NSString(string: item.displayText).boundingRect(
-                        with: textRect.size,
-                        options: [.usesLineFragmentOrigin, .usesFontLeading],
-                        attributes: attributes,
-                        context: nil
-                    )
-                    if measured.width <= textRect.width && measured.height <= textRect.height { break }
-                    fontSize -= 1
-                }
-
-                UIColor.black.withAlphaComponent(0.86).setFill()
-                UIBezierPath(roundedRect: bubbleRect, cornerRadius: 4).fill()
-                item.displayText.draw(
-                    in: textRect,
-                    withAttributes: attributes
-                )
+        guard !translations.isEmpty else { return }
+        let selected = translations
+            .sorted {
+                ($0.observation.width * $0.observation.height) >
+                ($1.observation.width * $1.observation.height)
             }
+            .prefix(4)
+            .sorted { $0.observation.y > $1.observation.y }
+
+        let originalText = selected.map(\.observation.text).joined(separator: "\n")
+        let translatedText = selected.map(\.translatedText).joined(separator: "\n")
+        let cardSize = CGSize(width: 1200, height: 420)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        pictureInPictureFrame = UIGraphicsImageRenderer(size: cardSize, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: cardSize))
+
+            drawFittedText(
+                originalText,
+                in: CGRect(x: 44, y: 28, width: 1112, height: 158),
+                color: .white,
+                maximumFontSize: 42
+            )
+
+            UIColor.white.withAlphaComponent(0.35).setFill()
+            context.fill(CGRect(x: 70, y: 205, width: 1060, height: 2))
+
+            drawFittedText(
+                translatedText,
+                in: CGRect(x: 44, y: 230, width: 1112, height: 160),
+                color: UIColor(red: 0.42, green: 0.96, blue: 0.83, alpha: 1),
+                maximumFontSize: 46
+            )
         }
+    }
+
+    private func drawFittedText(
+        _ text: String,
+        in rect: CGRect,
+        color: UIColor,
+        maximumFontSize: CGFloat
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        var fontSize = maximumFontSize
+        var attributes: [NSAttributedString.Key: Any] = [:]
+
+        while fontSize >= 18 {
+            attributes = [
+                .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
+            ]
+            let measured = NSString(string: text).boundingRect(
+                with: rect.size,
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: attributes,
+                context: nil
+            )
+            if measured.width <= rect.width && measured.height <= rect.height { break }
+            fontSize -= 1
+        }
+        NSString(string: text).draw(in: rect, withAttributes: attributes)
     }
 }
 

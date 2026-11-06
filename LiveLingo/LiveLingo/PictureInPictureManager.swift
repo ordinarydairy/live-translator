@@ -23,7 +23,7 @@ final class PictureInPictureManager: NSObject, ObservableObject {
             $0.clipsToBounds = true
         }
 
-        floatingController.preferredContentSize = CGSize(width: 720, height: 1280)
+        floatingController.preferredContentSize = CGSize(width: 1200, height: 420)
         floatingImageView.translatesAutoresizingMaskIntoConstraints = false
         floatingController.view.backgroundColor = .black
         floatingController.view.addSubview(floatingImageView)
@@ -120,14 +120,14 @@ final class PictureInPictureManager: NSObject, ObservableObject {
     }
 
     private func makeWaitingFrame() -> UIImage {
-        let size = CGSize(width: 720, height: 1280)
+        let size = CGSize(width: 1200, height: 420)
         return UIGraphicsImageRenderer(size: size).image { context in
             UIColor.black.setFill()
             context.fill(CGRect(origin: .zero, size: size))
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             NSString(string: "Waiting for live translation…").draw(
-                in: CGRect(x: 60, y: 570, width: 600, height: 140),
+                in: CGRect(x: 80, y: 155, width: 1040, height: 110),
                 withAttributes: [
                     .font: UIFont.systemFont(ofSize: 38, weight: .semibold),
                     .foregroundColor: UIColor.white,
