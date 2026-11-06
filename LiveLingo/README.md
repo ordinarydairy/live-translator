@@ -53,6 +53,10 @@ on the device. This is the primary live path when sideload signing removes App
 Group access. A second loopback port carries the stop command when the live
 translator page closes.
 
+PiP uses `AVPictureInPictureVideoCallViewController` with separate inline and
+floating image views. The live settings page reports whether PiP is preparing,
+ready, active, or failed with a system error.
+
 The first use of a language pair may ask permission to download Apple's on-device language model.
 
 ## Build an IPA without a Mac

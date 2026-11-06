@@ -78,7 +78,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("1.8")
+            Text("1.9")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -311,6 +311,11 @@ private struct LiveTranslatorSettingsView: View {
                             .background(.black, in: RoundedRectangle(cornerRadius: 22))
                             .foregroundStyle(.white)
                         }
+
+                        Text(pictureInPicture.statusText)
+                            .font(.caption.bold())
+                            .foregroundStyle(.black.opacity(0.72))
+                            .multilineTextAlignment(.center)
 
                         Text("Keep Picture in Picture open before switching to the app you want translated.")
                             .font(.caption)
