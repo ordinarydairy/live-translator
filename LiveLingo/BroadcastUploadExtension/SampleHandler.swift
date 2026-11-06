@@ -112,9 +112,11 @@ final class SampleHandler: RPBroadcastSampleHandler {
                 results = fallback.results ?? []
             }
 
+            let region = AppGroup.translationRegion
             let observations = results.compactMap { result -> ScreenObservation? in
                 guard let candidate = result.topCandidates(1).first else { return nil }
                 let box = result.boundingBox
+                if let region, !region.contains(CGPoint(x: box.midX, y: box.midY)) { return nil }
                 return ScreenObservation(text: candidate.string, x: box.minX, y: box.minY, width: box.width, height: box.height)
             }
             try store(pixelBuffer: pixelBuffer, orientation: orientation, observations: observations)

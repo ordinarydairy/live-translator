@@ -35,6 +35,11 @@ enum AppGroup {
     static let broadcastActiveKey = "broadcast-active"
     static let broadcastHeartbeatKey = "broadcast-heartbeat"
     static let stopBroadcastKey = "stop-broadcast-requested"
+    static let regionEnabledKey = "translation-region-enabled"
+    static let regionXKey = "translation-region-x"
+    static let regionYKey = "translation-region-y"
+    static let regionWidthKey = "translation-region-width"
+    static let regionHeightKey = "translation-region-height"
 
     static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)
@@ -44,6 +49,15 @@ enum AppGroup {
     static var observationURL: URL? { containerURL?.appendingPathComponent(observationName) }
 
     static var preferences: UserDefaults? { UserDefaults(suiteName: identifier) }
+
+    static var translationRegion: CGRect? {
+        guard preferences?.bool(forKey: regionEnabledKey) == true else { return nil }
+        let x = preferences?.double(forKey: regionXKey) ?? 0
+        let y = preferences?.double(forKey: regionYKey) ?? 0
+        let width = preferences?.double(forKey: regionWidthKey) ?? 1
+        let height = preferences?.double(forKey: regionHeightKey) ?? 1
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
 
     static var recognitionLanguages: [String] {
         recognitionLanguages(for: preferences?.string(forKey: sourceLanguageKey) ?? "")

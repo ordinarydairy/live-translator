@@ -77,7 +77,7 @@ struct ContentView: View {
                 Text(model.statusText).font(.caption.weight(.medium)).foregroundStyle(.black.opacity(0.55))
             }
             Spacer()
-            Text("2.2")
+            Text("2.3")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -299,6 +299,8 @@ private struct LiveTranslatorSettingsView: View {
                             .padding(17)
                             .background(.white, in: RoundedRectangle(cornerRadius: 22))
 
+                        translationRegionCard
+
                         Button { pictureInPicture.toggle() } label: {
                             Label(
                                 pictureInPicture.isActive ? "Stop Picture in Picture" : "Open Picture in Picture",
@@ -347,6 +349,49 @@ private struct LiveTranslatorSettingsView: View {
                 pictureInPicture.enqueue(frame)
             }
             .interactiveDismissDisabled()
+        }
+    }
+
+    private var translationRegionCard: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            Toggle("Translate selected screen area", isOn: $model.regionEnabled)
+                .font(.subheadline.bold())
+                .tint(Color(red: 0.46, green: 0.77, blue: 0.16))
+
+            if model.regionEnabled {
+                GeometryReader { proxy in
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.08))
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.green.opacity(0.24))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.green, lineWidth: 2))
+                            .frame(width: proxy.size.width * model.regionWidth,
+                                   height: proxy.size.height * model.regionHeight)
+                            .position(x: proxy.size.width * model.regionCenterX,
+                                      y: proxy.size.height * (1 - model.regionCenterY))
+                    }
+                }
+                .frame(height: 170)
+
+                regionSlider("Horizontal position", value: $model.regionCenterX)
+                regionSlider("Vertical position", value: $model.regionCenterY)
+                regionSlider("Area width", value: $model.regionWidth, range: 0.1...1)
+                regionSlider("Area height", value: $model.regionHeight, range: 0.1...1)
+            }
+        }
+        .padding(17)
+        .background(.white, in: RoundedRectangle(cornerRadius: 22))
+        .onChange(of: model.regionEnabled) { _, _ in model.saveTranslationRegion() }
+        .onChange(of: model.regionCenterX) { _, _ in model.saveTranslationRegion() }
+        .onChange(of: model.regionCenterY) { _, _ in model.saveTranslationRegion() }
+        .onChange(of: model.regionWidth) { _, _ in model.saveTranslationRegion() }
+        .onChange(of: model.regionHeight) { _, _ in model.saveTranslationRegion() }
+    }
+
+    private func regionSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double> = 0...1) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            Slider(value: value, in: range)
         }
     }
 }

@@ -49,6 +49,11 @@ final class LiveTranslationModel: ObservableObject {
         }
     }
     @Published var translationConfiguration: TranslationSession.Configuration?
+    @Published var regionEnabled = AppGroup.preferences?.bool(forKey: AppGroup.regionEnabledKey) ?? false
+    @Published var regionCenterX = 0.5
+    @Published var regionCenterY = 0.5
+    @Published var regionWidth = 0.9
+    @Published var regionHeight = 0.45
 
     private var pollingTask: Task<Void, Never>?
     private let loopbackServer = LoopbackFrameServer()
@@ -56,6 +61,37 @@ final class LiveTranslationModel: ObservableObject {
     private var lastObservationData: Data?
     private var translationGeneration = 0
     private var optimisticBroadcastUntil = Date.distantPast
+    private var lastTextSignature = ""
+    private var translationRequestedAt = Date.distantPast
+
+    init() {
+        let preferences = AppGroup.preferences
+        if preferences?.object(forKey: AppGroup.regionWidthKey) != nil {
+            let x = preferences?.double(forKey: AppGroup.regionXKey) ?? 0.05
+            let y = preferences?.double(forKey: AppGroup.regionYKey) ?? 0.275
+            regionWidth = max(0.1, preferences?.double(forKey: AppGroup.regionWidthKey) ?? 0.9)
+            regionHeight = max(0.1, preferences?.double(forKey: AppGroup.regionHeightKey) ?? 0.45)
+            regionCenterX = x + regionWidth / 2
+            regionCenterY = y + regionHeight / 2
+        }
+    }
+
+    func saveTranslationRegion() {
+        let width = min(max(regionWidth, 0.1), 1)
+        let height = min(max(regionHeight, 0.1), 1)
+        let x = min(max(regionCenterX - width / 2, 0), 1 - width)
+        let y = min(max(regionCenterY - height / 2, 0), 1 - height)
+        regionCenterX = x + width / 2
+        regionCenterY = y + height / 2
+        let preferences = AppGroup.preferences
+        preferences?.set(regionEnabled, forKey: AppGroup.regionEnabledKey)
+        preferences?.set(x, forKey: AppGroup.regionXKey)
+        preferences?.set(y, forKey: AppGroup.regionYKey)
+        preferences?.set(width, forKey: AppGroup.regionWidthKey)
+        preferences?.set(height, forKey: AppGroup.regionHeightKey)
+        preferences?.synchronize()
+        lastTextSignature = ""
+    }
 
     var statusText: String { isReceiving ? "Receiving live screen" : "Ready to translate" }
 
@@ -161,8 +197,21 @@ final class LiveTranslationModel: ObservableObject {
     }
 
     private func accept(image: UIImage, observations: [ScreenObservation], live: Bool) {
+        let observations = deduplicated(observations)
         frameImage = image
         isReceiving = live
+        let signature = observations
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+            .sorted()
+            .joined(separator: "|")
+        if live, signature == lastTextSignature { return }
+        if live, translations.isEmpty,
+           translationConfiguration != nil,
+           Date().timeIntervalSince(translationRequestedAt) < 8 {
+            return
+        }
+        lastTextSignature = signature
         pending = observations
         translations = []
         translationGeneration += 1
@@ -170,6 +219,27 @@ final class LiveTranslationModel: ObservableObject {
             renderDetectedTextFrame(observations)
         }
         requestTranslation()
+    }
+
+    private func deduplicated(_ input: [ScreenObservation]) -> [ScreenObservation] {
+        var output: [ScreenObservation] = []
+        for item in input.sorted(by: { ($0.width * $0.height) > ($1.width * $1.height) }) {
+            let normalized = item.text
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalized.count > 1 else { continue }
+            let duplicate = output.contains { existing in
+                let other = existing.text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                guard normalized == other else { return false }
+                let a = CGRect(x: item.x, y: item.y, width: item.width, height: item.height)
+                let b = CGRect(x: existing.x, y: existing.y, width: existing.width, height: existing.height)
+                let intersection = a.intersection(b)
+                let overlap = intersection.isNull ? 0 : intersection.width * intersection.height
+                return overlap > 0 || hypot(a.midX - b.midX, a.midY - b.midY) < 0.08
+            }
+            if !duplicate { output.append(item) }
+        }
+        return output
     }
 
     private func renderDetectedTextFrame(_ observations: [ScreenObservation]) {
@@ -217,6 +287,7 @@ final class LiveTranslationModel: ObservableObject {
         Task { @MainActor [weak self] in
             await Task.yield()
             guard let self, generation == self.translationGeneration else { return }
+            self.translationRequestedAt = Date()
             self.translationConfiguration = .init(
                 source: sourceCode.isEmpty ? nil : Locale.Language(identifier: sourceCode),
                 target: Locale.Language(identifier: targetCode)
@@ -278,7 +349,6 @@ final class LiveTranslationModel: ObservableObject {
             .prefix(4)
             .sorted { $0.observation.y > $1.observation.y }
 
-        let originalText = selected.map(\.observation.text).joined(separator: "\n")
         let translatedText = selected.map(\.translatedText).joined(separator: "\n")
         let cardSize = CGSize(width: 1200, height: 420)
         let format = UIGraphicsImageRendererFormat()
@@ -288,22 +358,15 @@ final class LiveTranslationModel: ObservableObject {
             UIColor.black.setFill()
             context.fill(CGRect(origin: .zero, size: cardSize))
 
-            drawFittedText(
-                originalText,
-                in: CGRect(x: 44, y: 28, width: 1112, height: 158),
-                color: .white,
-                maximumFontSize: 42
-            )
-
-            UIColor.white.withAlphaComponent(0.35).setFill()
-            context.fill(CGRect(x: 70, y: 205, width: 1060, height: 2))
-
-            drawFittedText(
-                translatedText,
-                in: CGRect(x: 44, y: 230, width: 1112, height: 160),
-                color: UIColor(red: 0.42, green: 0.96, blue: 0.83, alpha: 1),
-                maximumFontSize: 46
-            )
+            if showOriginalText {
+                let originalText = selected.map(\.observation.text).joined(separator: "\n")
+                drawFittedText(originalText, in: CGRect(x: 44, y: 28, width: 1112, height: 158), color: .white, maximumFontSize: 42)
+                UIColor.white.withAlphaComponent(0.35).setFill()
+                context.fill(CGRect(x: 70, y: 205, width: 1060, height: 2))
+                drawFittedText(translatedText, in: CGRect(x: 44, y: 230, width: 1112, height: 160), color: UIColor(red: 0.42, green: 0.96, blue: 0.83, alpha: 1), maximumFontSize: 46)
+            } else {
+                drawFittedText(translatedText, in: CGRect(x: 54, y: 44, width: 1092, height: 332), color: UIColor(red: 0.42, green: 0.96, blue: 0.83, alpha: 1), maximumFontSize: 54)
+            }
         }
     }
 

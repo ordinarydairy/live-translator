@@ -99,7 +99,8 @@ that preserves and signs the embedded extension.
 
 ## Production hardening
 
-- Add duplicate-line tracking so stable text is not translated repeatedly.
+- Version 2.3 stabilizes repeated OCR frames, merges duplicate detections, and
+  adds an optional rectangular screen-area selector to the live settings page.
 - Persist user language choices and expose supported-language availability.
 - Add rotation-aware OCR orientation and aspect-fit coordinate conversion.
 - Redact frames from logs and define a clear privacy/retention policy.
